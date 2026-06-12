@@ -223,8 +223,8 @@ func (m *Module) NextMajorPath() (string, bool) {
 }
 
 // Query the module proxy for all versions of a module.
-// If the module does not exist, the second return parameter will be false
-// cached sets the Disable-Module-Fetch: true header
+// If the module does not exist, the second return parameter will be false.
+// cached sets the Disable-Module-Fetch: true header.
 func Query(modpath string, cached bool) (*Module, bool, error) {
 	if Private(modpath) {
 		return directQuery(modpath)
