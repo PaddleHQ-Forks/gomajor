@@ -437,6 +437,26 @@ func TestDirectNotFound(t *testing.T) {
 			msg:  "git ls-remote -q origin: exit status 128:\n\tssh: connect to host example.com port 22: Operation timed out",
 			want: false,
 		},
+		{
+			name: "vanity import 404",
+			msg:  `unrecognized import path "go.example.com/mod": reading https://go.example.com/mod?go-get=1: 404 Not Found`,
+			want: true,
+		},
+		{
+			name: "vanity import without meta tags",
+			msg:  `unrecognized import path "go.example.com/mod": parse https://go.example.com/mod?go-get=1: no go-import meta tags ()`,
+			want: true,
+		},
+		{
+			name: "vanity import auth failure",
+			msg:  `unrecognized import path "go.example.com/mod": reading https://go.example.com/mod?go-get=1: 403 Forbidden`,
+			want: false,
+		},
+		{
+			name: "vanity import server failure",
+			msg:  `unrecognized import path "go.example.com/mod": https fetch: Get "https://go.example.com/mod?go-get=1": dial tcp: connection refused`,
+			want: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

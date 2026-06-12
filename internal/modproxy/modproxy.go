@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -302,18 +303,36 @@ func directQuery(modpath string) (*Module, bool, error) {
 // for repos the credentials can't see), which would mask auth failures.
 func directNotFound(msg string) bool {
 	msg = strings.ToLower(msg)
+	// A vanity import meta-tag fetch only proves absence when the server
+	// answered 404/410 or served a page without go-import meta tags.
+	// Auth (401/403), server, and network failures must be surfaced.
+	if strings.Contains(msg, "unrecognized import path") {
+		for _, s := range []string{
+			"404 not found",
+			"410 gone",
+			"no go-import meta tag",
+		} {
+			if strings.Contains(msg, s) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, s := range []string{
 		"no matching versions",
 		"unknown revision",
-		"import path",
 		"malformed module path",
 	} {
 		if strings.Contains(msg, s) {
 			return true
 		}
 	}
-	return false
+	// path-shape validation against a known host, e.g.
+	// `invalid github.com import path "github.com/PaddleHQ"`
+	return invalidImportPath.MatchString(msg)
 }
+
+var invalidImportPath = regexp.MustCompile(`invalid \S+ import path`)
 
 // ErrNoVersions is returned when the proxy has no version for a module
 var ErrNoVersions = errors.New("no module versions found")
