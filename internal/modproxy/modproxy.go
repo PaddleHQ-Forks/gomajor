@@ -294,15 +294,17 @@ func directQuery(modpath string) (*Module, bool, error) {
 	return &Module{Path: modpath, Versions: info.Versions}, true, nil
 }
 
-// directNotFound reports whether a go list error means the module doesn't
-// exist, as opposed to a VCS or auth failure which must be surfaced.
+// directNotFound reports whether a go list error means the queried module
+// path or version doesn't exist. Only go-level resolution messages are
+// matched: they are produced after VCS access succeeded or from pure path
+// validation. VCS-level failures must be surfaced as errors because hosts
+// conflate absence with access denial (GitHub reports "Repository not found"
+// for repos the credentials can't see), which would mask auth failures.
 func directNotFound(msg string) bool {
 	msg = strings.ToLower(msg)
 	for _, s := range []string{
 		"no matching versions",
-		"not found",
 		"unknown revision",
-		"invalid version",
 		"import path",
 		"malformed module path",
 	} {

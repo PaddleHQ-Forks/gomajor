@@ -406,9 +406,16 @@ func TestDirectNotFound(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "missing repository",
+			// GitHub reports "not found" for both missing and inaccessible
+			// repositories, so it must surface as an error, not absence.
+			name: "missing or inaccessible repository",
 			msg:  "module example.com/private/nope: git ls-remote -q https://example.com/private/nope: exit status 128:\n\tERROR: Repository not found.",
-			want: true,
+			want: false,
+		},
+		{
+			name: "expired https token",
+			msg:  "git ls-remote -q origin: exit status 128:\n\tremote: Repository not found.\n\tfatal: repository 'https://github.com/example/private/' not found",
+			want: false,
 		},
 		{
 			name: "invalid import path",
