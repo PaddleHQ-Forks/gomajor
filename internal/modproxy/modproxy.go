@@ -2,6 +2,7 @@ package modproxy
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
@@ -223,6 +225,9 @@ func (m *Module) NextMajorPath() (string, bool) {
 // If the module does not exist, the second return parameter will be false
 // cached sets the Disable-Module-Fetch: true header
 func Query(modpath string, cached bool) (*Module, bool, error) {
+	if Private(modpath) {
+		return directQuery(modpath)
+	}
 	escaped, err := module.EscapePath(modpath)
 	if err != nil {
 		return nil, false, err
@@ -253,6 +258,59 @@ func Query(modpath string, cached bool) (*Module, bool, error) {
 		return nil, false, err
 	}
 	return &mod, true, nil
+}
+
+// Private reports whether the module bypasses the proxy.
+// GONOPROXY defaults to GOPRIVATE when unset.
+func Private(modpath string) bool {
+	return module.MatchPrefixPatterns(goenv.Get("GONOPROXY"), modpath)
+}
+
+// directQuery fetches module versions using the go command, which resolves
+// modules that bypass the proxy over VCS with the user's credentials.
+// Retracted versions are already excluded from its output.
+func directQuery(modpath string) (*Module, bool, error) {
+	var stderr bytes.Buffer
+	cmd := exec.Command("go", "list", "-m", "-e", "-json", "-versions", modpath+"@latest")
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, false, fmt.Errorf("go list %s: %v: %s", modpath, err, strings.TrimSpace(stderr.String()))
+	}
+	var info struct {
+		Path     string
+		Versions []string
+		Error    *struct{ Err string }
+	}
+	if err := json.Unmarshal(out, &info); err != nil {
+		return nil, false, err
+	}
+	if info.Error != nil {
+		if directNotFound(info.Error.Err) {
+			return nil, false, nil
+		}
+		return nil, false, errors.New(info.Error.Err)
+	}
+	return &Module{Path: modpath, Versions: info.Versions}, true, nil
+}
+
+// directNotFound reports whether a go list error means the module doesn't
+// exist, as opposed to a VCS or auth failure which must be surfaced.
+func directNotFound(msg string) bool {
+	msg = strings.ToLower(msg)
+	for _, s := range []string{
+		"no matching versions",
+		"not found",
+		"unknown revision",
+		"invalid version",
+		"import path",
+		"malformed module path",
+	} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // ErrNoVersions is returned when the proxy has no version for a module
@@ -361,6 +419,10 @@ func QueryPackage(pkgpath string, cached bool) (*Module, error) {
 
 // FetchRetractions fetches the retractions for this module.
 func FetchRetractions(mod *Module) (Retractions, error) {
+	if Private(mod.Path) {
+		// directQuery already excludes retracted versions
+		return nil, nil
+	}
 	max := mod.MaxVersion("", false)
 	if max == "" {
 		return nil, nil
@@ -459,7 +521,6 @@ func Updates(opt UpdateOptions) {
 	ch := make(chan Update)
 	go func() {
 		defer close(ch)
-		private := goenv.Get("GOPRIVATE")
 		var group errgroup.Group
 		if opt.Cached {
 			group.SetLimit(3)
@@ -468,9 +529,6 @@ func Updates(opt UpdateOptions) {
 		}
 		for _, m := range opt.Modules {
 			m := m
-			if module.MatchPrefixPatterns(private, m.Path) {
-				continue
-			}
 			group.Go(func() error {
 				mod, err := Latest(m.Path, opt.Cached, opt.Pre)
 				if err == ErrNoVersions {

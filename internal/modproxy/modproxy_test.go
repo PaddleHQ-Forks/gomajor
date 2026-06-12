@@ -372,3 +372,70 @@ func TestQueryPackage(t *testing.T) {
 		})
 	}
 }
+
+func TestPrivate(t *testing.T) {
+	t.Setenv("GONOPROXY", "example.com/private,*.internal.corp")
+	tests := []struct {
+		modpath string
+		want    bool
+	}{
+		{"example.com/private/mod", true},
+		{"example.com/private/mod/v2", true},
+		{"git.internal.corp/team/mod", true},
+		{"example.com/public/mod", false},
+		{"github.com/go-redis/redis", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.modpath, func(t *testing.T) {
+			if got := Private(tt.modpath); got != tt.want {
+				t.Fatalf("Private(%q) = %v, want %v", tt.modpath, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDirectNotFound(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want bool
+	}{
+		{
+			name: "missing major version",
+			msg:  `module example.com/private/mod/v8: no matching versions for query "latest"`,
+			want: true,
+		},
+		{
+			name: "missing repository",
+			msg:  "module example.com/private/nope: git ls-remote -q https://example.com/private/nope: exit status 128:\n\tERROR: Repository not found.",
+			want: true,
+		},
+		{
+			name: "invalid import path",
+			msg:  `example.com@latest: invalid example.com import path "example.com"`,
+			want: true,
+		},
+		{
+			name: "unknown revision",
+			msg:  "example.com/private/mod@v1.2.3: invalid version: unknown revision v1.2.3",
+			want: true,
+		},
+		{
+			name: "auth failure",
+			msg:  "git ls-remote -q origin: exit status 128:\n\tfatal: could not read Username for 'https://example.com': terminal prompts disabled",
+			want: false,
+		},
+		{
+			name: "network failure",
+			msg:  "git ls-remote -q origin: exit status 128:\n\tssh: connect to host example.com port 22: Operation timed out",
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := directNotFound(tt.msg); got != tt.want {
+				t.Fatalf("directNotFound(%q) = %v, want %v", tt.msg, got, tt.want)
+			}
+		})
+	}
+}
