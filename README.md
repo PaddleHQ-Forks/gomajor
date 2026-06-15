@@ -67,4 +67,4 @@ gomajor path goredis.io
 * If you have multiple major versions imported, **ALL** of them will be rewritten (See `-rewrite` flag).
 * The latest version will not be found if there are **gaps** between major version numbers.
 * The `path` command does not rewrite package names.
-* Modules matching `GOPRIVATE` are skipped.
+* Modules matching `GONOPROXY`/`GOPRIVATE` are resolved via `go list -m`, which uses your VCS credentials, instead of the module proxy.
