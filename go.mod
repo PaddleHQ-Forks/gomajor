@@ -1,4 +1,4 @@
-module github.com/icholy/gomajor
+module github.com/PaddleHQ-Forks/gomajor
 
 go 1.25
 
